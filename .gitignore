@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Data (可选：如果你想提交数据到 git，可以删除这两行)
+# data/*.csv
+
+# Google Sheets credentials (安全考虑，不要提交到仓库)
+google_credentials.json
+*.json
+!package.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
