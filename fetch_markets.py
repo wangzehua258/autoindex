@@ -186,6 +186,26 @@ def fetch_fred(series: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def format_dataframe_values(df: pd.DataFrame) -> pd.DataFrame:
+    """格式化 DataFrame 中的数值字段"""
+    df_formatted = df.copy()
+    
+    # 格式化 value 和 prev_close：保留小数点一位
+    for col in ['value', 'prev_close']:
+        if col in df_formatted.columns:
+            df_formatted[col] = df_formatted[col].apply(
+                lambda x: f"{float(x):.1f}" if pd.notnull(x) and x is not None and isinstance(x, (int, float)) else ""
+            )
+    
+    # 格式化 change_pct：百分号形式，保留小数点两位
+    if 'change_pct' in df_formatted.columns:
+        df_formatted['change_pct'] = df_formatted['change_pct'].apply(
+            lambda x: f"{float(x):.2f}%" if pd.notnull(x) and x is not None and isinstance(x, (int, float)) else ""
+        )
+    
+    return df_formatted
+
+
 def clean_dataframe_for_export(df: pd.DataFrame) -> pd.DataFrame:
     """清理 DataFrame 中的 NaN、inf 等值，使其可以安全地导出到 CSV 和 Google Sheets"""
     df_clean = df.copy()
@@ -214,20 +234,23 @@ def assemble_and_save(df_list):
     df = pd.concat(non_empty_dfs, ignore_index=True)
     df.insert(0, "timestamp_utc", ts_iso)
     
-    # 清理数据
-    df = clean_dataframe_for_export(df)
+    # 清理数据（保留原始数值用于格式化）
+    df_clean = clean_dataframe_for_export(df)
     
-    # 保存 latest.csv（覆盖）
-    df.to_csv(LATEST_CSV, index=False, encoding="utf-8")
+    # 格式化数据用于显示和导出
+    df_formatted = format_dataframe_values(df_clean)
     
-    # 追加 history.csv（如不存在则新建）
+    # 保存 latest.csv（覆盖）- 使用格式化后的数据
+    df_formatted.to_csv(LATEST_CSV, index=False, encoding="utf-8")
+    
+    # 追加 history.csv（如不存在则新建）- 使用格式化后的数据
     if not os.path.exists(HISTORY_CSV):
-        df.to_csv(HISTORY_CSV, index=False, encoding="utf-8")
+        df_formatted.to_csv(HISTORY_CSV, index=False, encoding="utf-8")
     else:
-        df.to_csv(HISTORY_CSV, mode="a", header=False, index=False, encoding="utf-8")
+        df_formatted.to_csv(HISTORY_CSV, mode="a", header=False, index=False, encoding="utf-8")
     
     print(f"[OK] Wrote {LATEST_CSV} and appended to {HISTORY_CSV}")
-    return df
+    return df_formatted
 
 
 def push_to_google_sheets(df: pd.DataFrame):
@@ -270,22 +293,28 @@ def push_to_google_sheets(df: pd.DataFrame):
             history_sheet.append_row(df.columns.tolist())
         
         # 清理数据，准备推送到 Google Sheets
-        df_clean = clean_dataframe_for_export(df)
+        # df 已经是格式化后的（从 assemble_and_save 返回）
+        # 直接使用，因为已经是字符串格式
         
         # 转换为列表，确保所有值都是 JSON 兼容的
         def safe_convert(val):
             """将值转换为 Google Sheets 兼容的格式"""
-            if val is None or (isinstance(val, float) and (math.isnan(val) or math.isinf(val))):
+            if val is None or val == "":
                 return ""
+            # 如果已经是字符串（格式化后的），直接返回
+            if isinstance(val, str):
+                return val
             if isinstance(val, float):
+                if math.isnan(val) or math.isinf(val):
+                    return ""
                 # 检查是否为有效的浮点数
                 if abs(val) > 1e100:  # 超大数值
                     return ""
-            return val
+            return str(val)
         
         # 转换数据行为列表
         values = []
-        for _, row in df_clean.iterrows():
+        for _, row in df.iterrows():
             values.append([safe_convert(val) for val in row.tolist()])
         
         # 追加历史数据行
