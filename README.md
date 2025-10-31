@@ -47,15 +47,28 @@ python fetch_markets.py --alt-dxy
 #### 步骤 2：创建 Google Sheets 并共享
 
 1. 创建新的 Google Sheets 文档
-2. 从 URL 中获取 Spreadsheet ID（例如：`https://docs.google.com/spreadsheets/d/SPREADSHEET_ID_HERE/edit`）1Oo_QohM60v7CxEO8KqLGweb8S6SYSse0xsFbrA-KimA
+2. 从 URL 中获取 Spreadsheet ID：
+   - URL 格式：`https://docs.google.com/spreadsheets/d/SPREADSHEET_ID_HERE/edit`
+   - 例如：如果 URL 是 `https://docs.google.com/spreadsheets/d/1Oo_QohM60v7CxEO8KqLGweb8S6SYSse0xsFbrA-KimA/edit`
+   - 那么 Spreadsheet ID 就是：`1Oo_QohM60v7CxEO8KqLGweb8S6SYSse0xsFbrA-KimA`
 3. 将服务账号的邮箱地址（在 JSON 文件中，格式类似 `xxx@xxx.iam.gserviceaccount.com`）添加到 Google Sheets 的「共享」列表，并授予「编辑者」权限
 
 #### 步骤 3：配置 GitHub Secrets（用于 GitHub Actions）
 
+**使用 Repository secrets（推荐）**
+
+对于这个项目，使用 **Repository secrets** 更简单直接，因为所有工作流都需要相同的凭证。
+
 1. 在 GitHub 仓库中，进入「Settings」>「Secrets and variables」>「Actions」
-2. 添加以下两个 Secret：
-   - `GOOGLE_SHEETS_CREDENTIALS_JSON`: 将下载的 JSON 文件内容**完整复制**粘贴到这里
-   - `GOOGLE_SHEETS_SPREADSHEET_ID`: 粘贴你的 Spreadsheet ID
+2. 点击「New repository secret」添加以下两个 Secret：
+   - **Name**: `GOOGLE_SHEETS_CREDENTIALS_JSON`
+     **Value**: 将下载的 JSON 文件内容**完整复制**粘贴到这里（注意：需要将整个 JSON 作为一行粘贴，或保持换行格式都可以）
+   - **Name**: `GOOGLE_SHEETS_SPREADSHEET_ID`
+     **Value**: 粘贴你的 Spreadsheet ID（例如：`1Oo_QohM60v7CxEO8KqLGweb8S6SYSse0xsFbrA-KimA`）
+
+**Repository secrets vs Environment secrets：**
+- **Repository secrets**（推荐）：适用于整个仓库的所有工作流，设置简单，适合本项目
+- **Environment secrets**：需要先创建环境，然后配置 secrets，适合需要多环境隔离的复杂场景
 
 #### 步骤 4：本地测试（可选）
 

@@ -9,9 +9,13 @@ on:
 jobs:
   fetch:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 允许写入内容（用于 git push）
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -35,6 +39,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/latest.csv data/history.csv || true
-          git commit -m "chore: update market snapshot $(date -u +'%Y-%m-%dT%H:%M:%SZ')" || echo "No changes"
-          git push || echo "Push skipped"
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: update market snapshot $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            git push
+          fi
 

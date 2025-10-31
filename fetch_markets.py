@@ -9,8 +9,10 @@ import os
 import sys
 import time
 import json
+import math
 from datetime import datetime, timezone
 import pandas as pd
+import numpy as np
 import yfinance as yf
 from pandas_datareader import data as pdr
 
@@ -41,8 +43,8 @@ YF_TICKERS = {
     "Nasdaq Composite": "^IXIC",
     "Euro Stoxx 50": "^STOXX50E",
     "Stoxx Europe 600": "^STOXX",
-    # 美元指数（若 ^DXY 不可用，可改成 "DX-Y.NYB"）
-    "US Dollar Index (DXY)": "^DXY",
+    # 美元指数（使用备用符号，因为 ^DXY 经常不可用）
+    "US Dollar Index (DXY)": "DX-Y.NYB",
     # 主要货币对
     "EUR/USD": "EURUSD=X",
     "USD/JPY": "JPY=X",
@@ -184,14 +186,36 @@ def fetch_fred(series: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def clean_dataframe_for_export(df: pd.DataFrame) -> pd.DataFrame:
+    """清理 DataFrame 中的 NaN、inf 等值，使其可以安全地导出到 CSV 和 Google Sheets"""
+    df_clean = df.copy()
+    
+    # 对于数值列，将 NaN 和 inf 替换为 None（在 CSV 中会变成空字符串）
+    numeric_cols = df_clean.select_dtypes(include=[np.number]).columns
+    for col in numeric_cols:
+        df_clean[col] = df_clean[col].replace([np.inf, -np.inf], None)
+        df_clean[col] = df_clean[col].where(pd.notnull(df_clean[col]), None)
+    
+    return df_clean
+
+
 def assemble_and_save(df_list):
     """合并数据并保存到 CSV"""
     ensure_dir(OUTPUT_DIR)
     ts = datetime.now(timezone.utc)
     ts_iso = ts.isoformat()
     
-    df = pd.concat(df_list, ignore_index=True)
+    # 过滤掉空 DataFrame
+    non_empty_dfs = [df for df in df_list if not df.empty]
+    if not non_empty_dfs:
+        print("[WARN] No data to save")
+        return pd.DataFrame()
+    
+    df = pd.concat(non_empty_dfs, ignore_index=True)
     df.insert(0, "timestamp_utc", ts_iso)
+    
+    # 清理数据
+    df = clean_dataframe_for_export(df)
     
     # 保存 latest.csv（覆盖）
     df.to_csv(LATEST_CSV, index=False, encoding="utf-8")
@@ -245,26 +269,46 @@ def push_to_google_sheets(df: pd.DataFrame):
             # 写入表头
             history_sheet.append_row(df.columns.tolist())
         
+        # 清理数据，准备推送到 Google Sheets
+        df_clean = clean_dataframe_for_export(df)
+        
+        # 转换为列表，确保所有值都是 JSON 兼容的
+        def safe_convert(val):
+            """将值转换为 Google Sheets 兼容的格式"""
+            if val is None or (isinstance(val, float) and (math.isnan(val) or math.isinf(val))):
+                return ""
+            if isinstance(val, float):
+                # 检查是否为有效的浮点数
+                if abs(val) > 1e100:  # 超大数值
+                    return ""
+            return val
+        
+        # 转换数据行为列表
+        values = []
+        for _, row in df_clean.iterrows():
+            values.append([safe_convert(val) for val in row.tolist()])
+        
         # 追加历史数据行
-        values = df.values.tolist()
-        history_sheet.append_rows(values)
+        if values:
+            history_sheet.append_rows(values)
         
         # 处理 Latest 工作表（覆盖最新数据）
         try:
             latest_sheet = spreadsheet.worksheet(GOOGLE_SHEETS_LATEST_SHEET)
-            # 清空现有数据（保留表头）
+            # 清空现有数据
             latest_sheet.clear()
         except gspread.exceptions.WorksheetNotFound:
             # 如果不存在，创建新工作表
             latest_sheet = spreadsheet.add_worksheet(
                 title=GOOGLE_SHEETS_LATEST_SHEET,
                 rows=100,
-                cols=len(df.columns)
+                cols=len(df_clean.columns)
             )
         
         # 写入表头和数据
-        latest_sheet.append_row(df.columns.tolist())
-        latest_sheet.append_rows(values)
+        latest_sheet.append_row(df_clean.columns.tolist())
+        if values:
+            latest_sheet.append_rows(values)
         
         print(f"[OK] Pushed data to Google Sheets: {GOOGLE_SHEETS_SPREADSHEET_ID}")
         return True
